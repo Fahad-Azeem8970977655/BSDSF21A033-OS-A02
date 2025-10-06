@@ -3,53 +3,46 @@ Feature 1: Simple Listing
 Concepts Covered: Directory Traversal, opendir(), readdir(), File Filtering
 
 Description:
-This feature implements the basic ls functionality, listing files in a directory. Hidden files (starting with .) are skipped.
-
-Implementation Notes:
-Used opendir() and readdir() to read directory contents, and printed each filename using printf(). Default listing is horizontal (simple file names) without extra information. Example logic: open directory, loop through entries, and print filenames skipping hidden files.
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+The basic ls functionality lists files in a directory, skipping hidden files. The program opens a directory using opendir(), loops through each entry with readdir(), and prints filenames using printf(). Hidden files (starting with .) are ignored. Example logic: for each directory entry, if the first character is not ., print the filename. --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Feature 2: Long Listing (-l)
 
 Concepts Covered: File Metadata, stat()/lstat(), File Permissions, Owner/Group Info
 
 Description:
-The -l option implements a long listing similar to standard ls -l, displaying file type (directory, regular file, symbolic link), permissions (read/write/execute for user/group/others), number of links, owner and group names, file size, and last modification time.
+The -l option prints a long listing of files, similar to ls -l. The displayed information includes file type (directory, regular file, or symbolic link), permissions (read/write/execute for user, group, others), number of links, owner name, group name, file size, and last modification time.
 
-Key Points:
+Implementation Details:
+lstat() is used instead of stat() because it provides information about symbolic links themselves rather than their targets. File type is determined by (st.st_mode & S_IFMT) and checked against S_IFDIR, S_IFREG, S_ISLNK. Permissions are extracted using bitwise AND with S_IRUSR, S_IWUSR, S_IXUSR, S_IRGRP, S_IWGRP, S_IXGRP, S_IROTH, S_IWOTH, S_IXOTH. Example: if (st.st_mode & S_IRUSR) is true, the owner has read permission. Owner and group names are retrieved via getpwuid(st.st_uid) and getgrgid(st.st_gid). Modification time is formatted using strftime().
 
-stat() vs. lstat(): stat() returns info about the target file of a symlink, while lstat() returns info about the symlink itself. We use lstat() to correctly display symbolic links.
+Sample code inline:
+For file type detection: char type = '-'; if (S_ISDIR(st.st_mode)) type = 'd'; else if (S_ISLNK(st.st_mode)) type = 'l';. For permissions: perms[0] = (st.st_mode & S_IRUSR) ? 'r' : '-'; similarly for other permission bits. Printing uses: printf("%c%s %ld %s %s %ld %s %s\n", type, perms, st.st_nlink, pw->pw_name, gr->gr_name, st.st_size, timebuf, filename);.
 
-Extracting file type and permissions: st_mode contains both file type and permission bits. File type is extracted using bitwise AND with masks like S_IFDIR, S_IFREG, S_IFLNK. Permissions are extracted with S_IRUSR, S_IWUSR, S_IXUSR, S_IRGRP, etc. For example, (fileStat.st_mode & S_IFMT) == S_IFDIR checks if a file is a directory, and (fileStat.st_mode & S_IRUSR) checks if the owner has read permission.
-
-Owner and group names are obtained via getpwuid(st.st_uid) and getgrgid(st.st_gid).
-
-Modification time is formatted using strftime().
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Feature 3: Column Display (Down Then Across)
 
 Concepts Covered: Output Formatting, Terminal I/O (ioctl), Dynamic Memory
 
 Description:
-Upgrades the default output to display files in multiple columns “down then across,” automatically adjusting to terminal width and filename lengths.
+Files are displayed in multiple columns with a “down then across” layout, adjusting automatically to terminal width and filename length. All filenames are first read into a dynamically allocated array while tracking the length of the longest filename. Terminal width is determined using ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) with a fallback of 80 columns. Number of columns is calculated as terminal_width / (max_len + spacing) and number of rows as ceil(total_files / num_columns). Files are printed row by row: for row r and column c, the index is r + c * num_rows. Memory is freed after printing.
 
-Implementation Notes:
-All filenames are read into a dynamically allocated array and the length of the longest filename is tracked. Terminal width is determined using ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) with a fallback of 80 columns. Number of columns is calculated as terminal_width divided by (max_filename_length + spacing), and number of rows as ceil(total_files / num_columns). Files are printed row by row: for row r and column c, the index is r + c * num_rows. Memory is freed after printing.
-Report Questions:
+Report Questions Answered:
 
-A single loop is insufficient because we want vertical alignment first; we cannot print filenames immediately without calculating rows and columns.
+A single loop is insufficient because we need vertical alignment; we cannot print filenames sequentially without pre-calculating rows and columns.
 
-ioctl() detects terminal width for dynamic column adjustment. Using a fixed width would make output inconsistent on different terminal sizes.                                                           --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ioctl() detects terminal width dynamically, so the output adapts to different terminal sizes. Using a fixed width (e.g., 80) could make output misaligned on larger or smaller terminals.
+
+Sample code inline:
+Reading filenames: filenames[count] = strdup(entry->d_name); if (strlen(entry->d_name) > max_len) max_len = strlen(entry->d_name); count++;. Printing: for each row r and column c, index = r + c*num_rows; print with printf("%-*s", max_len + spacing, filenames[index]);.                                                          --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Feature 4: Horizontal Column Display (-x)
 
-Concepts Covered: Output Formatting Logic, Command-Line Argument Parsing, State Management
+Concepts Covered: Output Formatting Logic, Command-Line Argument Parsing, State Management Description:
+The -x option prints files in a horizontal (row-major) layout, wrapping to the next line when the current line is full. Argument parsing is extended using getopt() to recognize -x. Display mode flags are used: long_flag for -l, horizontal_flag for -x, and default vertical for “down then across”. Terminal width is detected using ioctl(). Column width is based on the longest filename plus spacing. A horizontal position counter tracks the current line; when adding the next filename would exceed terminal width, a newline is printed and the counter resets.
 
-Description:
-Adds a horizontal display mode triggered by -x. Files are printed from left to right and wrap to the next line when the current line is full.
+Report Questions Answered:
 
-Implementation Notes:
-The getopt() loop is extended to recognize the -x flag. Display mode flags are used: long_flag for -l, horizontal_flag for -x, and default for vertical “down then across”. Terminal width is determined using ioctl(). Column width is calculated based on the longest filename plus spacing. While iterating filenames, each is printed padded to column width. A horizontal position counter tracks the current position; if adding the next filename exceeds terminal width, a newline is printed and the counter resets.
+Vertical “down then across” is more complex because it requires pre-calculation of rows and careful indexing. Horizontal display only tracks horizontal position, so it is simpler.
 
-Report Questions:
+Display modes are managed using flags set from command-line arguments. After reading filenames, the program checks flags and calls the corresponding function: long_listing() for -l, horizontal_display() for -x, or column_display() for default.
 
-Vertical “down then across” requires pre-calculation of rows and indexing, making it more complex. Horizontal display only tracks horizontal position, making it simpler.
-Display modes are managed using flags set by command-line arguments. After reading filenames, the program checks flags and calls the appropriate function: long listing for -l, horizontal display for -x, or vertical column display for default.
+Sample code inline:
+For horizontal display: int pos = 0; for (int i=0; i<count; i++) { printf("%-*s", max_len+spacing, filenames[i]); pos += max_len+spacing; if(pos + max_len + spacing > term_width){ printf("\n"); pos=0; } } printf("\n");.
