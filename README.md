@@ -1,28 +1,55 @@
-Feature 1 & 2 – Long Listing and Simple Listing
+Feature 1: Simple Listing
 
-Difference between stat() and lstat()
+Concepts Covered: Directory Traversal, opendir(), readdir(), File Filtering
 
-stat() returns information about the file that the path points to. If the path is a symbolic link, stat() returns information about the target file, not the link itself. lstat() returns information about the file itself. If the path is a symbolic link, lstat() returns information about the link, not the file it points to.
+Description:
+This feature implements the basic ls functionality, listing files in a directory. Hidden files (starting with .) are skipped.
 
-In the context of the ls command, use lstat() when you want to display information about symbolic links themselves, for example when using "ls -l" which shows "symlink -> target". Use stat() when you are only interested in the actual files or directories and not the symbolic links.
+Implementation Notes:
+Used opendir() and readdir() to read directory contents, and printed each filename using printf(). Default listing is horizontal (simple file names) without extra information. Example logic: open directory, loop through entries, and print filenames skipping hidden files.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Feature 2: Long Listing (-l)
 
-Example: To get information about the symbolic link itself, use lstat("linkname", &fileStat); and to get information about the actual file the link points to, use stat("linkname", &fileStat);
-Extracting File Type and Permissions from st_mode
+Concepts Covered: File Metadata, stat()/lstat(), File Permissions, Owner/Group Info
 
-The st_mode field in struct stat contains both the file type and permission bits packed in a single integer. To determine the file type, use a bitwise AND with predefined macros like S_IFDIR, S_IFREG, or S_IFLNK. For example, if ((fileStat.st_mode & S_IFMT) == S_IFDIR) then it is a directory. If ((fileStat.st_mode & S_IFMT) == S_IFREG) then it is a regular file.
+Description:
+The -l option implements a long listing similar to standard ls -l, displaying file type (directory, regular file, symbolic link), permissions (read/write/execute for user/group/others), number of links, owner and group names, file size, and last modification time.
 
-To determine permission bits, use bitwise AND with macros like S_IRUSR, S_IWUSR, S_IXUSR, S_IRGRP, S_IWGRP, S_IXGRP, S_IROTH, S_IWOTH, and S_IXOTH. For example, if (fileStat.st_mode & S_IRUSR) then the owner can read, if (fileStat.st_mode & S_IWUSR) then the owner can write, and if (fileStat.st_mode & S_IXUSR) then the owner can execute. S_IFMT is a mask used to extract only the file type bits and ignore permission bits.
+Key Points:
 
-Feature 3 – Column Display (Down Then Across)
-Down-Then-Across Column Logic
+stat() vs. lstat(): stat() returns info about the target file of a symlink, while lstat() returns info about the symlink itself. We use lstat() to correctly display symbolic links.
 
-In a columnar display like the default ls output, files are displayed in columns that fill top-to-bottom first, and then move to the next column. The logic involves first determining the terminal width and the length of the longest filename. Then, the number of columns is calculated using the formula: num_columns = terminal_width / (max_filename_length + spacing), and the number of rows is calculated as num_rows = ceil(total_files / num_columns).
+Extracting file type and permissions: st_mode contains both file type and permission bits. File type is extracted using bitwise AND with masks like S_IFDIR, S_IFREG, S_IFLNK. Permissions are extracted with S_IRUSR, S_IWUSR, S_IXUSR, S_IRGRP, etc. For example, (fileStat.st_mode & S_IFMT) == S_IFDIR checks if a file is a directory, and (fileStat.st_mode & S_IRUSR) checks if the owner has read permission.
 
-To print the files in down-then-across format, iterate row by row. For each row i from 0 to num_rows-1, print the filenames at positions i, i + num_rows, i + 2*num_rows, and so on. This ensures that each column is filled top-to-bottom first. A simple single loop through the filenames is insufficient because it would fill the output left-to-right, row by row, which does not match the standard behavior of ls. Proper mapping of each file to its row-column position is required for correct alignment.
-Purpose of ioctl
+Owner and group names are obtained via getpwuid(st.st_uid) and getgrgid(st.st_gid).
 
-The ioctl system call with the TIOCGWINSZ request is used to detect the current terminal width. This allows the program to dynamically calculate how many columns can fit on the screen. Using ioctl ensures that the output adapts to terminal resizing and columns remain properly aligned.
+Modification time is formatted using strftime().
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Feature 3: Column Display (Down Then Across)
 
-Limitations of a Fixed-Width Fallback
+Concepts Covered: Output Formatting, Terminal I/O (ioctl), Dynamic Memory
 
-If a fixed width (for example, 80 columns) were used instead of detecting the terminal width, the output might overflow on smaller terminals, causing misaligned formatting. On larger terminals, space would be wasted and the display would not utilize the available width efficiently. The program would be less dynamic and not behave like the standard ls utility, which automatically adjusts columns based on the terminal size.
+Description:
+Upgrades the default output to display files in multiple columns “down then across,” automatically adjusting to terminal width and filename lengths.
+
+Implementation Notes:
+All filenames are read into a dynamically allocated array and the length of the longest filename is tracked. Terminal width is determined using ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) with a fallback of 80 columns. Number of columns is calculated as terminal_width divided by (max_filename_length + spacing), and number of rows as ceil(total_files / num_columns). Files are printed row by row: for row r and column c, the index is r + c * num_rows. Memory is freed after printing.
+Report Questions:
+
+A single loop is insufficient because we want vertical alignment first; we cannot print filenames immediately without calculating rows and columns.
+
+ioctl() detects terminal width for dynamic column adjustment. Using a fixed width would make output inconsistent on different terminal sizes.                                                           --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Feature 4: Horizontal Column Display (-x)
+
+Concepts Covered: Output Formatting Logic, Command-Line Argument Parsing, State Management
+
+Description:
+Adds a horizontal display mode triggered by -x. Files are printed from left to right and wrap to the next line when the current line is full.
+
+Implementation Notes:
+The getopt() loop is extended to recognize the -x flag. Display mode flags are used: long_flag for -l, horizontal_flag for -x, and default for vertical “down then across”. Terminal width is determined using ioctl(). Column width is calculated based on the longest filename plus spacing. While iterating filenames, each is printed padded to column width. A horizontal position counter tracks the current position; if adding the next filename exceeds terminal width, a newline is printed and the counter resets.
+
+Report Questions:
+
+Vertical “down then across” requires pre-calculation of rows and indexing, making it more complex. Horizontal display only tracks horizontal position, making it simpler.
+Display modes are managed using flags set by command-line arguments. After reading filenames, the program checks flags and calls the appropriate function: long listing for -l, horizontal display for -x, or vertical column display for default.
