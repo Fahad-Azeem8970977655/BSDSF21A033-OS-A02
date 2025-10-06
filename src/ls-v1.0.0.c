@@ -54,22 +54,20 @@ void long_listing(const char *filename) {
            filename);
 }
 
-// ----------------- Feature 3: Column Display -----------------
-void column_display(const char *target_dir) {
+// ----------------- Feature 3: Vertical Column Display -----------------
+void vertical_display(const char *target_dir) {
     DIR *dir = opendir(target_dir);
     if (!dir) {
         perror("opendir");
         return;
     }
 
-    // Read all filenames into dynamic array
     char **filenames = NULL;
     int count = 0, max_len = 0;
     struct dirent *entry;
 
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue; // skip hidden
-
+        if (entry->d_name[0] == '.') continue;
         filenames = realloc(filenames, sizeof(char*) * (count + 1));
         filenames[count] = strdup(entry->d_name);
         int len = strlen(entry->d_name);
@@ -83,16 +81,14 @@ void column_display(const char *target_dir) {
         return;
     }
 
-    // Get terminal width
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-    int term_width = w.ws_col ? w.ws_col : 80; // fallback
+    int term_width = w.ws_col ? w.ws_col : 80;
     int spacing = 2;
     int num_columns = term_width / (max_len + spacing);
     if (num_columns < 1) num_columns = 1;
-    int num_rows = (count + num_columns - 1) / num_columns; // ceil division
+    int num_rows = (count + num_columns - 1) / num_columns;
 
-    // Print "down then across"
     for (int r = 0; r < num_rows; r++) {
         for (int c = 0; c < num_columns; c++) {
             int index = r + c * num_rows;
@@ -102,7 +98,53 @@ void column_display(const char *target_dir) {
         printf("\n");
     }
 
-    // Free memory
+    for (int i = 0; i < count; i++) free(filenames[i]);
+    free(filenames);
+}
+
+// ----------------- Feature 4: Horizontal Display (-x Option) -----------------
+void horizontal_display(const char *target_dir) {
+    DIR *dir = opendir(target_dir);
+    if (!dir) {
+        perror("opendir");
+        return;
+    }
+
+    char **filenames = NULL;
+    int count = 0, max_len = 0;
+    struct dirent *entry;
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue;
+        filenames = realloc(filenames, sizeof(char*) * (count + 1));
+        filenames[count] = strdup(entry->d_name);
+        int len = strlen(entry->d_name);
+        if (len > max_len) max_len = len;
+        count++;
+    }
+    closedir(dir);
+
+    if (count == 0) {
+        free(filenames);
+        return;
+    }
+
+    struct winsize w;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+    int term_width = w.ws_col ? w.ws_col : 80;
+    int spacing = 2;
+    int pos = 0;
+
+    for (int i = 0; i < count; i++) {
+        printf("%-*s", max_len + spacing, filenames[i]);
+        pos += max_len + spacing;
+        if (pos + max_len + spacing > term_width) {
+            printf("\n");
+            pos = 0;
+        }
+    }
+    if (pos != 0) printf("\n");
+
     for (int i = 0; i < count; i++) free(filenames[i]);
     free(filenames);
 }
@@ -110,14 +152,14 @@ void column_display(const char *target_dir) {
 // ----------------- Main Function -----------------
 int main(int argc, char *argv[]) {
     int opt;
-    int long_flag = 0;
+    int display_mode = 0; // 0=vertical, 1=long listing (-l), 2=horizontal (-x)
 
-    // Parse options
-    while ((opt = getopt(argc, argv, "l")) != -1) {
-        switch (opt) {
-            case 'l': long_flag = 1; break;
+    while ((opt = getopt(argc, argv, "lx")) != -1) {
+        switch(opt) {
+            case 'l': display_mode = 1; break;
+            case 'x': display_mode = 2; break;
             default:
-                fprintf(stderr, "Usage: %s [-l] [directory]\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-l] [-x] [directory]\n", argv[0]);
                 return 1;
         }
     }
@@ -125,14 +167,9 @@ int main(int argc, char *argv[]) {
     char *target_dir = ".";
     if (optind < argc) target_dir = argv[optind];
 
-    if (long_flag) {
-        // Long listing: Feature 2
+    if (display_mode == 1) {
         DIR *dir = opendir(target_dir);
-        if (!dir) {
-            perror("opendir");
-            return 1;
-        }
-
+        if (!dir) { perror("opendir"); return 1; }
         struct dirent *entry;
         while ((entry = readdir(dir)) != NULL) {
             if (entry->d_name[0] != '.') {
@@ -142,11 +179,13 @@ int main(int argc, char *argv[]) {
             }
         }
         closedir(dir);
+    } else if (display_mode == 2) {
+        horizontal_display(target_dir);
     } else {
-        // Column display: Feature 3
-        column_display(target_dir);
+        vertical_display(target_dir);
     }
 
     return 0;
 }
+
 
