@@ -1,185 +1,189 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
 #include <pwd.h>
 #include <grp.h>
 #include <time.h>
-#include <string.h>
-#include <sys/ioctl.h>
+#include <limits.h>
 
-// ----------------- Feature 6: Color Macros -----------------
-#define BLUE "\033[0;34m"
-#define GREEN "\033[0;32m"
-#define RED "\033[0;31m"
-#define PINK "\033[0;35m"
-#define REVERSE "\033[7m"
-#define RESET "\033[0m"
+#define COLOR_RESET   "\033[0m"
+#define COLOR_BLUE    "\033[0;34m"
+#define COLOR_GREEN   "\033[0;32m"
+#define COLOR_RED     "\033[0;31m"
+#define COLOR_PINK    "\033[0;35m"
+#define COLOR_REVERSE "\033[7m"
 
-// ----------------- Feature 2: Long Listing -----------------
-void long_listing(const char *filename) {
+int long_flag = 0;
+int horizontal_flag = 0;
+int recursive_flag = 0;
+int spacing = 2;
+
+// Comparison function for qsort
+int cmpstring(const void *a, const void *b) {
+    char *const *str1 = a;
+    char *const *str2 = b;
+    return strcmp(*str1, *str2);
+}
+
+// Function to display a file in long format (-l)
+void long_listing(char *filename) {
     struct stat st;
-    if (lstat(filename, &st) == -1) {
-        perror("lstat");
-        return;
-    }
+    lstat(filename, &st);
+    char perms[11] = "----------";
 
-    char type = '-';
-    if (S_ISDIR(st.st_mode)) type = 'd';
-    else if (S_ISLNK(st.st_mode)) type = 'l';
+    if (S_ISDIR(st.st_mode)) perms[0] = 'd';
+    else if (S_ISLNK(st.st_mode)) perms[0] = 'l';
+    else if (S_ISCHR(st.st_mode)) perms[0] = 'c';
+    else if (S_ISBLK(st.st_mode)) perms[0] = 'b';
+    else if (S_ISSOCK(st.st_mode)) perms[0] = 's';
+    else if (S_ISFIFO(st.st_mode)) perms[0] = 'p';
 
-    char perms[10];
-    perms[0] = (st.st_mode & S_IRUSR) ? 'r' : '-';
-    perms[1] = (st.st_mode & S_IWUSR) ? 'w' : '-';
-    perms[2] = (st.st_mode & S_IXUSR) ? 'x' : '-';
-    perms[3] = (st.st_mode & S_IRGRP) ? 'r' : '-';
-    perms[4] = (st.st_mode & S_IWGRP) ? 'w' : '-';
-    perms[5] = (st.st_mode & S_IXGRP) ? 'x' : '-';
-    perms[6] = (st.st_mode & S_IROTH) ? 'r' : '-';
-    perms[7] = (st.st_mode & S_IWOTH) ? 'w' : '-';
-    perms[8] = (st.st_mode & S_IXOTH) ? 'x' : '-';
-    perms[9] = '\0';
+    if (st.st_mode & S_IRUSR) perms[1] = 'r';
+    if (st.st_mode & S_IWUSR) perms[2] = 'w';
+    if (st.st_mode & S_IXUSR) perms[3] = 'x';
+    if (st.st_mode & S_IRGRP) perms[4] = 'r';
+    if (st.st_mode & S_IWGRP) perms[5] = 'w';
+    if (st.st_mode & S_IXGRP) perms[6] = 'x';
+    if (st.st_mode & S_IROTH) perms[7] = 'r';
+    if (st.st_mode & S_IWOTH) perms[8] = 'w';
+    if (st.st_mode & S_IXOTH) perms[9] = 'x';
 
     struct passwd *pw = getpwuid(st.st_uid);
-    struct group *gr = getgrgid(st.st_gid);
-
-    char timebuf[80];
+    struct group  *gr = getgrgid(st.st_gid);
+    char timebuf[64];
     strftime(timebuf, sizeof(timebuf), "%b %d %H:%M", localtime(&st.st_mtime));
 
-    char *color = RESET;
-    if (S_ISDIR(st.st_mode)) color = BLUE;
-    else if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) color = GREEN;
-    else if (strstr(filename, ".tar") || strstr(filename, ".gz") || strstr(filename, ".zip")) color = RED;
-    else if (S_ISLNK(st.st_mode)) color = PINK;
-    else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)) color = REVERSE;
-
-    printf("%c%s %ld %s %s %ld %s %s%s%s\n",
-           type,
-           perms,
-           st.st_nlink,
-           pw ? pw->pw_name : "unknown",
-           gr ? gr->gr_name : "unknown",
-           st.st_size,
-           timebuf,
-           color,
-           filename,
-           RESET);
+    printf("%s %ld %s %s %5ld %s %s\n", perms, st.st_nlink, pw->pw_name, gr->gr_name, st.st_size, timebuf, filename);
 }
 
-// ----------------- Feature 3 & 4: Column & Horizontal Display -----------------
-void column_display(char **filenames, int count, int horizontal) {
-    if (count == 0) return;
+// Function to print filename with color based on type
+void print_colored(char *filename) {
+    struct stat st;
+    lstat(filename, &st);
 
-    int max_len = 0;
-    for (int i = 0; i < count; i++) {
-        int len = strlen(filenames[i]);
-        if (len > max_len) max_len = len;
-    }
+    char *color = COLOR_RESET;
+    if (S_ISDIR(st.st_mode)) color = COLOR_BLUE;
+    else if (S_ISLNK(st.st_mode)) color = COLOR_PINK;
+    else if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) color = COLOR_GREEN;
+    else if (strstr(filename, ".tar") || strstr(filename, ".gz") || strstr(filename, ".zip")) color = COLOR_RED;
+    else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISSOCK(st.st_mode) || S_ISFIFO(st.st_mode)) color = COLOR_REVERSE;
 
+    printf("%s%s%s", color, filename, COLOR_RESET);
+}
+
+// Horizontal display (-x)
+void horizontal_display(char **filenames, int count) {
     struct winsize w;
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-    int term_width = w.ws_col ? w.ws_col : 80;
-    int spacing = 2;
+    int term_width = w.ws_col;
+    int max_len = 0;
+    for (int i = 0; i < count; i++)
+        if ((int)strlen(filenames[i]) > max_len) max_len = strlen(filenames[i]);
 
-    if (horizontal) {
-        int pos = 0;
-        for (int i = 0; i < count; i++) {
-            struct stat st;
-            lstat(filenames[i], &st);
-            char *color = RESET;
-            if (S_ISDIR(st.st_mode)) color = BLUE;
-            else if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) color = GREEN;
-            else if (strstr(filenames[i], ".tar") || strstr(filenames[i], ".gz") || strstr(filenames[i], ".zip")) color = RED;
-            else if (S_ISLNK(st.st_mode)) color = PINK;
-            else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)) color = REVERSE;
+    int pos = 0;
+    for (int i = 0; i < count; i++) {
+        print_colored(filenames[i]);
+        printf("%-*s", max_len + spacing - (int)strlen(filenames[i]), "");
+        pos += max_len + spacing;
+        if (pos + max_len + spacing > term_width) { printf("\n"); pos = 0; }
+    }
+    printf("\n");
+}
 
-            printf("%s%-*s%s", color, max_len + spacing, filenames[i], RESET);
-            pos += max_len + spacing;
-            if (pos + max_len + spacing > term_width) { printf("\n"); pos = 0; }
+// Column display (default vertical)
+void column_display(char **filenames, int count) {
+    int max_len = 0;
+    for (int i = 0; i < count; i++)
+        if ((int)strlen(filenames[i]) > max_len) max_len = strlen(filenames[i]);
+
+    int rows = 0;
+    struct winsize w;
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+    int term_width = w.ws_col;
+    int cols = term_width / (max_len + spacing);
+    if (cols == 0) cols = 1;
+    rows = (count + cols - 1) / cols;
+
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < cols; c++) {
+            int idx = c * rows + r;
+            if (idx < count) {
+                print_colored(filenames[idx]);
+                printf("%-*s", max_len + spacing - (int)strlen(filenames[idx]), "");
+            }
         }
         printf("\n");
-    } else {
-        int num_columns = term_width / (max_len + spacing);
-        if (num_columns < 1) num_columns = 1;
-        int num_rows = (count + num_columns - 1) / num_columns;
-
-        for (int r = 0; r < num_rows; r++) {
-            for (int c = 0; c < num_columns; c++) {
-                int index = r + c * num_rows;
-                if (index < count) {
-                    struct stat st;
-                    lstat(filenames[index], &st);
-                    char *color = RESET;
-                    if (S_ISDIR(st.st_mode)) color = BLUE;
-                    else if ((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH)) color = GREEN;
-                    else if (strstr(filenames[index], ".tar") || strstr(filenames[index], ".gz") || strstr(filenames[index], ".zip")) color = RED;
-                    else if (S_ISLNK(st.st_mode)) color = PINK;
-                    else if (S_ISCHR(st.st_mode) || S_ISBLK(st.st_mode) || S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)) color = REVERSE;
-
-                    printf("%s%-*s%s", color, max_len + spacing, filenames[index], RESET);
-                }
-            }
-            printf("\n");
-        }
     }
 }
 
-// ----------------- Feature 5: Comparison Function for qsort -----------------
-int cmpfunc(const void *a, const void *b) {
-    const char *s1 = *(const char **)a;
-    const char *s2 = *(const char **)b;
-    return strcmp(s1, s2);
-}
+// Core directory listing function
+void do_ls(char *dirname) {
+    DIR *dir = opendir(dirname);
+    if (!dir) { perror("opendir"); return; }
 
-// ----------------- Main Function (Feature 1–5) -----------------
-int main(int argc, char *argv[]) {
-    int opt;
-    int long_flag = 0, horizontal_flag = 0;
-
-    while ((opt = getopt(argc, argv, "lx")) != -1) {
-        switch (opt) {
-            case 'l': long_flag = 1; break;
-            case 'x': horizontal_flag = 1; break;
-            default:
-                fprintf(stderr, "Usage: %s [-l] [-x] [directory]\n", argv[0]);
-                return 1;
-        }
-    }
-
-    char *target_dir = ".";
-    if (optind < argc) target_dir = argv[optind];
-
-    DIR *dir = opendir(target_dir);
-    if (!dir) { perror("opendir"); return 1; }
-
+    struct dirent *entry;
     char **filenames = NULL;
     int count = 0;
-    struct dirent *entry;
+
     while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
         filenames = realloc(filenames, sizeof(char*) * (count + 1));
-        filenames[count++] = strdup(entry->d_name);
+        filenames[count] = strdup(entry->d_name);
+        count++;
     }
     closedir(dir);
 
-    if (count == 0) { free(filenames); return 0; }
+    qsort(filenames, count, sizeof(char*), cmpstring);
 
-    qsort(filenames, count, sizeof(char*), cmpfunc);
+    for (int i = 0; i < count; i++) {
+        if (long_flag) long_listing(filenames[i]);
+        else if (horizontal_flag) horizontal_display(filenames, count);
+        else column_display(filenames, count);
+        break; // display only once if not -l
+    }
 
-    if (long_flag) {
+    // Recursive logic for -R
+    if (recursive_flag) {
         for (int i = 0; i < count; i++) {
-            char path[1024];
-            snprintf(path, sizeof(path), "%s/%s", target_dir, filenames[i]);
-            long_listing(path);
+            if (strcmp(filenames[i], ".") == 0 || strcmp(filenames[i], "..") == 0) continue;
+            char fullpath[PATH_MAX];
+            snprintf(fullpath, PATH_MAX, "%s/%s", dirname, filenames[i]);
+            struct stat st;
+            lstat(fullpath, &st);
+            if (S_ISDIR(st.st_mode)) {
+                printf("\n");
+                do_ls(fullpath);
+            }
         }
-    } else {
-        column_display(filenames, count, horizontal_flag);
     }
 
     for (int i = 0; i < count; i++) free(filenames[i]);
     free(filenames);
+}
+
+// Main function with argument parsing
+int main(int argc, char *argv[]) {
+    int opt;
+    while ((opt = getopt(argc, argv, "l x R")) != -1) {
+        switch (opt) {
+            case 'l': long_flag = 1; break;
+            case 'x': horizontal_flag = 1; break;
+            case 'R': recursive_flag = 1; break;
+        }
+    }
+
+    if (optind == argc) {
+        do_ls(".");
+    } else {
+        for (int i = optind; i < argc; i++) {
+            do_ls(argv[i]);
+        }
+    }
     return 0;
 }
+
 
 
