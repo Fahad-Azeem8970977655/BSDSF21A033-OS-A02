@@ -24,15 +24,7 @@ Concepts Covered: Output Formatting, Terminal I/O (ioctl), Dynamic Memory
 
 Description:
 Files are displayed in multiple columns with a “down then across” layout, adjusting automatically to terminal width and filename length. All filenames are first read into a dynamically allocated array while tracking the length of the longest filename. Terminal width is determined using ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) with a fallback of 80 columns. Number of columns is calculated as terminal_width / (max_len + spacing) and number of rows as ceil(total_files / num_columns). Files are printed row by row: for row r and column c, the index is r + c * num_rows. Memory is freed after printing.
-
-Report Questions Answered:
-
-A single loop is insufficient because we need vertical alignment; we cannot print filenames sequentially without pre-calculating rows and columns.
-
-ioctl() detects terminal width dynamically, so the output adapts to different terminal sizes. Using a fixed width (e.g., 80) could make output misaligned on larger or smaller terminals.
-
-Sample code inline:
-Reading filenames: filenames[count] = strdup(entry->d_name); if (strlen(entry->d_name) > max_len) max_len = strlen(entry->d_name); count++;. Printing: for each row r and column c, index = r + c*num_rows; print with printf("%-*s", max_len + spacing, filenames[index]);.                                                          --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                                                     --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 Feature 4: Horizontal Column Display (-x)
 
 Concepts Covered: Output Formatting Logic, Command-Line Argument Parsing, State Management Description:
@@ -97,4 +89,27 @@ feature-alphabetical-sort-v1.4.0 → v1.4.0
 
 feature-colorized-output-v1.5.0 → v1.5.0
 
-Each release was pushed to GitHub with the binary attached.
+Each release was pushed to GitHub with the binary attached.                                                                                                                                             --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Feature 7:
+
+In a recursive function, what is a "base case"?
+A base case is a condition that stops the recursion from continuing indefinitely. It defines when the function should stop calling itself and start returning. Without a base case, a recursive function would call itself endlessly, eventually causing a stack overflow.
+
+In the context of recursive ls (-R option):
+The base case occurs when the function encounters a directory that has no subdirectories or when it reaches files that are not directories. In other words, if a directory contains no further directories to recurse into, the recursion stops for that branch.
+
+Why is it essential to construct a full path before making a recursive call?
+Constructing the full path ensures that the function knows the exact location of the subdirectory relative to the current working directory. For example, if you are listing parent_dir and find a subdirectory subdir, you must call do_ls("parent_dir/subdir").
+
+What happens if you simply call do_ls("subdir")?
+If you only call do_ls("subdir"), the program will look for subdir in the current working directory (where the program was originally started), not inside parent_dir. This would either fail or list the wrong directory, breaking the recursive logic.
+
+Report Questions Answered:
+
+A single loop is insufficient because we need vertical alignment; we cannot print filenames sequentially without pre-calculating rows and columns.
+
+ioctl() detects terminal width dynamically, so the output adapts to different terminal sizes. Using a fixed width (e.g., 80) could make output misaligned on larger or smaller terminals.
+
+Sample code inline:
+Reading filenames: filenames[count] = strdup(entry->d_name); if (strlen(entry->d_name) > max_len) max_len = strlen(entry->d_name); count++;. Printing: for each row r and column c, index = r + c*num_rows; print with printf("%-*s", max_len + spacing, filenames[index]);
