@@ -54,3 +54,46 @@ Feature 5: Alphabetical Sort, the REPORT.md answers are as follows:
 Reading all directory entries into memory before sorting is necessary because sorting requires knowledge of all the items you want to order. You cannot determine the correct alphabetical order if you only read and process files one by one. By storing all filenames in a dynamic array, the program can compare each filename with others and rearrange them accordingly. The potential drawback of this approach is that it can consume a large amount of memory for directories containing millions of files, possibly causing memory exhaustion or slowing down the system. Processing extremely large directories may also lead to longer execution times since sorting algorithms like qsort operate on the entire dataset at once.
 
 he comparison function required by qsort() serves as the rule for ordering elements. Its signature is int cmp(const void *a, const void *b), where both parameters are pointers to elements in the array being sorted. Inside the function, these pointers are cast to the appropriate type (in this case, pointers to strings) and compared using a standard comparison method like strcmp(). The function returns a negative, zero, or positive integer depending on whether the first element is less than, equal to, or greater than the second. It must take const void * arguments because qsort() is a generic sorting function in C that can sort arrays of any type. Using const void * ensures type-agnostic flexibility while protecting the original data from being modified inside the comparison function.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Feature 6: Colorized Output Based on File Type
+
+Concepts Covered: File Metadata (stat), ANSI Escape Codes, String Manipulation
+
+Description:
+Implemented colorized output using ANSI escape codes. File types are determined with stat() or lstat():
+
+Directory: Blue
+
+Executable: Green (check st_mode execute bits)
+
+Tarballs (.tar, .gz, .zip): Red
+
+Symbolic Links: Pink
+
+Special Files (devices, sockets): Reverse video
+
+A helper function wraps filenames with the correct ANSI codes before printing. This is applied to all display modes (default, -l, -x).
+
+Report Questions Answered:
+
+ANSI escape codes work by printing special sequences: e.g., green text: \033[0;32mtext\033[0m.
+
+Executable files are detected using permission bits: S_IXUSR (owner), S_IXGRP (group), S_IXOTH (others).
+
+Notes:
+
+All features are implemented sequentially from Feature 1 to Feature 6.
+
+Branching and tagging were used for proper Git workflow:
+
+feature-long-listing-v1.1.0 → v1.1.0
+
+feature-column-display-v1.2.0 → v1.2.0
+
+feature-horizontal-display-v1.3.0 → v1.3.0
+
+feature-alphabetical-sort-v1.4.0 → v1.4.0
+
+feature-colorized-output-v1.5.0 → v1.5.0
+
+Each release was pushed to GitHub with the binary attached.
