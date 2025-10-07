@@ -55,30 +55,13 @@ void long_listing(const char *filename) {
 }
 
 // ----------------- Feature 3: Vertical Column Display -----------------
-void vertical_display(const char *target_dir) {
-    DIR *dir = opendir(target_dir);
-    if (!dir) {
-        perror("opendir");
-        return;
-    }
+void column_display(char **filenames, int count) {
+    if (count == 0) return;
 
-    char **filenames = NULL;
-    int count = 0, max_len = 0;
-    struct dirent *entry;
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
-        filenames = realloc(filenames, sizeof(char*) * (count + 1));
-        filenames[count] = strdup(entry->d_name);
-        int len = strlen(entry->d_name);
+    int max_len = 0;
+    for (int i = 0; i < count; i++) {
+        int len = strlen(filenames[i]);
         if (len > max_len) max_len = len;
-        count++;
-    }
-    closedir(dir);
-
-    if (count == 0) {
-        free(filenames);
-        return;
     }
 
     struct winsize w;
@@ -97,36 +80,16 @@ void vertical_display(const char *target_dir) {
         }
         printf("\n");
     }
-
-    for (int i = 0; i < count; i++) free(filenames[i]);
-    free(filenames);
 }
 
-// ----------------- Feature 4: Horizontal Display (-x Option) -----------------
-void horizontal_display(const char *target_dir) {
-    DIR *dir = opendir(target_dir);
-    if (!dir) {
-        perror("opendir");
-        return;
-    }
+// ----------------- Feature 4: Horizontal Column Display (-x) -----------------
+void horizontal_display(char **filenames, int count) {
+    if (count == 0) return;
 
-    char **filenames = NULL;
-    int count = 0, max_len = 0;
-    struct dirent *entry;
-
-    while ((entry = readdir(dir)) != NULL) {
-        if (entry->d_name[0] == '.') continue;
-        filenames = realloc(filenames, sizeof(char*) * (count + 1));
-        filenames[count] = strdup(entry->d_name);
-        int len = strlen(entry->d_name);
+    int max_len = 0;
+    for (int i = 0; i < count; i++) {
+        int len = strlen(filenames[i]);
         if (len > max_len) max_len = len;
-        count++;
-    }
-    closedir(dir);
-
-    if (count == 0) {
-        free(filenames);
-        return;
     }
 
     struct winsize w;
@@ -143,21 +106,26 @@ void horizontal_display(const char *target_dir) {
             pos = 0;
         }
     }
-    if (pos != 0) printf("\n");
+    printf("\n");
+}
 
-    for (int i = 0; i < count; i++) free(filenames[i]);
-    free(filenames);
+// ----------------- Feature 5: Alphabetical Sort -----------------
+int cmp_str(const void *a, const void *b) {
+    const char *str1 = *(const char **)a;
+    const char *str2 = *(const char **)b;
+    return strcmp(str1, str2);
 }
 
 // ----------------- Main Function -----------------
 int main(int argc, char *argv[]) {
     int opt;
-    int display_mode = 0; // 0=vertical, 1=long listing (-l), 2=horizontal (-x)
+    int long_flag = 0;
+    int horizontal_flag = 0;
 
     while ((opt = getopt(argc, argv, "lx")) != -1) {
-        switch(opt) {
-            case 'l': display_mode = 1; break;
-            case 'x': display_mode = 2; break;
+        switch (opt) {
+            case 'l': long_flag = 1; break;
+            case 'x': horizontal_flag = 1; break;
             default:
                 fprintf(stderr, "Usage: %s [-l] [-x] [directory]\n", argv[0]);
                 return 1;
@@ -167,25 +135,42 @@ int main(int argc, char *argv[]) {
     char *target_dir = ".";
     if (optind < argc) target_dir = argv[optind];
 
-    if (display_mode == 1) {
-        DIR *dir = opendir(target_dir);
-        if (!dir) { perror("opendir"); return 1; }
-        struct dirent *entry;
-        while ((entry = readdir(dir)) != NULL) {
-            if (entry->d_name[0] != '.') {
-                char filepath[1024];
-                snprintf(filepath, sizeof(filepath), "%s/%s", target_dir, entry->d_name);
-                long_listing(filepath);
-            }
-        }
-        closedir(dir);
-    } else if (display_mode == 2) {
-        horizontal_display(target_dir);
-    } else {
-        vertical_display(target_dir);
+    DIR *dir = opendir(target_dir);
+    if (!dir) {
+        perror("opendir");
+        return 1;
     }
+
+    char **filenames = NULL;
+    int count = 0;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_name[0] == '.') continue; // skip hidden
+        filenames = realloc(filenames, sizeof(char*) * (count + 1));
+        filenames[count] = strdup(entry->d_name);
+        count++;
+    }
+    closedir(dir);
+
+    if (count > 1) {
+        qsort(filenames, count, sizeof(char*), cmp_str);
+    }
+
+    if (long_flag) {
+        for (int i = 0; i < count; i++) {
+            char filepath[1024];
+            snprintf(filepath, sizeof(filepath), "%s/%s", target_dir, filenames[i]);
+            long_listing(filepath);
+        }
+    } else if (horizontal_flag) {
+        horizontal_display(filenames, count);
+    } else {
+        column_display(filenames, count);
+    }
+
+    for (int i = 0; i < count; i++) free(filenames[i]);
+    free(filenames);
 
     return 0;
 }
-
 
